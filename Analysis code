@@ -1,0 +1,1632 @@
+rm(list = ls())
+source('functions.R')
+library(readxl)
+select = dplyr::select
+join_keys <- c("试验中心名称", "姓名缩写", "筛选号", "注册号", "组别")
+
+FAS = readRDS('数据集合/FAS.rds')
+PPS = readRDS('数据集合/PPS.rds')
+SS = readRDS("数据集合/SS.rds")
+SAE = readRDS("数据集合/SAE.rds")
+
+# Baseline -----
+library(gtsummary)
+tbl1 <- FAS %>%
+  select(组别, "年龄","性别","高血压病史","收缩压最高","舒张压最高","糖尿病病史", "高脂血症病史","总胆固醇.TC.","吸烟史","冠状动脉粥样硬化性心脏病病史","心房纤颤史","外周动脉病史",
+         "是否为症状性狭窄",Brain_infarct,stenosis_side,"病变血管所在侧",Antiplatelet,Anticoagulants,Statins) %>%
+  tbl_summary(
+    by = 组别,
+    statistic = list(
+      all_continuous() ~ "{median} ({p25}–{p75})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ c(0, 1) 
+    )
+  )
+
+tbl1 <- tbl1 %>% 
+  modify_header(label = "**Characteristic**")
+
+tbl1 <- tbl1 %>%
+  modify_spanning_header(c("stat_1", "stat_2") ~ "**Group**")
+
+
+library(gt)
+
+tbl1 %>%
+  as_gt() %>%
+  gt::gtsave("Manuscript/Table1.docx")
+
+pvalue_fun <- function(x) {
+  ifelse(
+    is.na(x),
+    NA_character_,
+    ifelse(
+      x < 0.0001,
+      "<0.0001",
+      format(signif(x, 2), trim = TRUE, scientific = FALSE)
+    )
+  )
+}
+
+tbl2 <- FAS %>% 
+  select(
+    组别, 麻醉方式, 开始穿刺至结束时间, 第一次穿刺到置鞘时间,
+    Cross_over, Switching_type, Repeated_puncture, 
+    Failure_surgery, Failure_type
+  ) %>% 
+  tbl_summary(
+    by = 组别, 
+    statistic = list(
+      all_continuous() ~ "{median} ({p25}–{p75})", 
+      all_categorical() ~ "{n} ({p}%)"
+    ), 
+    digits = list(
+      all_continuous() ~ 1, 
+      all_categorical() ~ c(0, 1)
+    )
+  ) %>%  
+  add_p() %>% 
+  modify_fmt_fun(
+    p.value ~ pvalue_fun
+  ) %>%
+  modify_header(label = "**Characteristic**") %>% 
+  modify_spanning_header(
+    c("stat_1", "stat_2") ~ "**Group**"
+  )
+
+
+tbl2 %>%
+  as_gt() %>%
+  gt::gtsave("Manuscript/Table2.docx")
+
+
+tbl1 <- FAS %>%
+  select(组别, "受教育程度","饮酒史","V1_体温","V1_呼吸","心率","过敏史",
+         "血糖.GLU.","甘油三酯.TG.","高密度脂蛋白胆固醇.HDL.","低密度脂蛋白胆固醇.LDL.",
+         "血小板计数.PLT.","凝血酶原国际标准化比值.INR.") %>%
+  tbl_summary(
+    by = 组别,
+    statistic = list(
+      all_continuous() ~ "{median} ({p25}–{p75})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ c(0, 1) 
+    )
+  )
+
+tbl1 <- tbl1 %>% 
+  modify_header(label = "**Characteristic**")
+
+tbl1 <- tbl1 %>%
+  modify_spanning_header(c("stat_1", "stat_2") ~ "**Group**")
+
+
+library(gt)
+
+tbl1 %>%
+  as_gt() %>%
+  gt::gtsave("Manuscript/TableS1.docx")
+
+
+tbl2 <- FAS %>%
+  select(组别, tapered, brand2, Xtime, Xdose, Seal, Compression) %>%
+  tbl_summary(
+    by = 组别,
+    statistic = list(
+      all_continuous() ~ "{median} ({p25}–{p75})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ c(0, 1) 
+    )
+  ) %>% 
+  add_p(
+    test = list(
+      all_continuous() ~ "wilcox.test",
+      all_categorical() ~ "chisq.test"
+    )
+    # pvalue_fun = ~style_pvalue(.x, digits = 3)
+  ) %>% 
+  modify_fmt_fun(
+    p.value ~ pvalue_fun
+  )
+
+tbl2 <- tbl2 %>% 
+  modify_header(label = "**Characteristic**")
+
+tbl2 <- tbl2 %>%
+  modify_spanning_header(c("stat_1", "stat_2") ~ "**Group**")
+
+
+tbl2 %>%
+  as_gt() %>%
+  gt::gtsave("Manuscript/TableS2.docx")
+
+# Primary outcome in SAS ----
+PROC IMPORT DATAFILE="J:\神经内科\刘锐\RACE\重新分析\20260828新数据\FAS_Center_2.XLSX"
+OUT=DATA
+DBMS=XLSX REPLACE;
+RUN;
+
+proc freq data=DATA;
+table var5*PunctureSite;
+run;
+
+
+DATA DATA1;
+SET DATA;
+IF VAR5='对照组' THEN TRA= 0;
+IF VAR5='试验组' THEN TRA= 1;
+
+IF VAR5='对照组' THEN TFA= 1;
+IF VAR5='试验组' THEN TFA= 0;
+/*Primary_Outcome2=Primary_Outcome;*/
+  /*不填补*/
+  IF Primary_Outcome="1" THEN Primary_Outcome2=1;
+IF Primary_Outcome="0" THEN Primary_Outcome2=0;
+
+/*if volume>0 and volume<=10 then center_volume=1;*/
+  /*else if volume>10 and volume<=50 then center_volume=2;*/
+  /*else if volume>50 and volume<=100 then center_volume=3;*/
+  /*else if volume>100 then center_volume=4;*/
+  
+  if volume=50 then center_volume=1;
+else if volume=100 then center_volume=2;
+else if volume=150 then center_volume=2;
+else if volume=200 then center_volume=3;
+else if volume=300 then center_volume=4;
+else if volume=400 then center_volume=4;
+
+RUN;
+
+PROC FREQ DATA=DATA1;
+TABLE Primary_Outcome*VAR5;
+RUN;
+
+
+proc format;
+value TRA
+0 = "TFA"
+1 = "TRA";
+value TFA
+0 = "TRA"
+1 = "TFA";
+value Primary_Outcome
+0 = "否,n(%)"
+1 = "是,n(%)"
+2 = "率差及其97.8% CI"
+2.1 = "TAR χ2值 in glm"
+2.2 = "TAR P值 in glm"
+3 = "P值"
+-99="N(Missing)";
+/* value SEX*/
+  /*   0 = "女"*/
+  /*   1 = "男";*/
+  /* value XZ*/
+  /*   0 = "否"*/
+  /*   1 = "是";*/
+  /* value BBC*/
+  /*   0 = "左侧"*/
+  /*   1 = "右侧";*/
+  run;
+
+
+/*Noninferiority was assessed on the risk difference scale.*/
+  /*Because the outcome represented an adverse event, the noninferiority test was conducted on the complement (event-free rate), such that a noninferiority margin of ?2% for the event-free rate corresponds to a margin of +2% for the event rate.*/
+  /*A one-sided Farrington–Manning test was used to obtain the noninferiority p value.*/
+  
+  /*FAS-不填补结局*/
+  PROC MEANS DATA=DATA1 N NMISS;
+CLASS TFA;
+VAR Primary_Outcome2;
+format TFA TFA.;
+ods output Summary=Summary;
+RUN;
+
+proc freq data = DATA1;
+tables TFA*Primary_Outcome2 /nopercent nocol chisq ;
+format TFA TFA.;
+ods output CrossTabFreqs=CrossTabFreqs;
+run ;
+
+/*置信区间-加上中心volume 如果求单因素的见 主要疗效指标分析*/
+  
+  proc genmod data=DATA1 descending;
+class TRA(ref='0')
+center_volume(ref='1') / param=ref;
+
+model Primary_Outcome2 = TRA center_volume
+/ dist=binomial link=identity;
+
+/* 双侧97.8% Wald置信区间 */
+  estimate "Adjusted RD: Trial-Control" TRA 1
+/ alpha=0.022;
+
+ods output Estimates=AdjRD;
+run;
+
+
+data Adj_Noninf;
+set AdjRD;
+length NI_Conclusion $40;
+Margin=0.02;
+/*
+  GENMOD的Estimates表通常使用以下变量名。
+建议通过PROC CONTENTS确认。
+*/
+  RD_event=MeanEstimate;
+SE=StdErr;
+/* 双侧97.8% Wald CI */
+  LowerCL=MeanLowerCL;
+UpperCL=MeanUpperCL;
+/*
+  Primary_Outcome2=1表示不良复合终点；
+RD=试验组事件率－对照组事件率。
+
+H0：RD_event >= 0.02
+H1：RD_event <  0.02
+*/
+  Z_noninf=(RD_event-Margin)/SE;
+P_noninf=probnorm(Z_noninf);
+
+/*
+  双侧97.8%CI对应单侧alpha=0.011。
+以下两种判定完全一致：
+
+1. P_noninf < 0.011
+2. 双侧97.8%CI上限 < 0.02
+*/
+  if P_noninf<0.011 then
+NI_Conclusion="达到非劣效";
+else
+  NI_Conclusion="未达到非劣效";
+
+/* 普通双侧检验：H0为RD=0 */
+  Z_equal=RD_event/SE;
+P_twosided=2*(1-probnorm(abs(Z_equal)));
+
+format RD_event LowerCL UpperCL Margin percentn12.2
+SE 12.6
+Z_noninf P_noninf
+Z_equal P_twosided 12.4;
+run;
+
+
+DATA CROSS1;
+SET CrossTabFreqs(WHERE=(_TYPE_="11"));
+FREQ=COMPRESS(Frequency||"("||PUT(ROUND(RowPercent,0.001),12.2)||")");
+KEEP TFA Primary_Outcome2 FREQ;
+RUN;
+
+DATA CROSS2;
+SET SUMMARY;
+FREQ=COMPRESS(Primary_Outcome2_N||"("||Primary_Outcome2_NMiss||")");
+Primary_Outcome2=-99;
+KEEP TFA FREQ Primary_Outcome2;
+RUN;
+
+DATA TEMP;
+SET CROSS1 CROSS2;
+RUN;
+
+PROC SORT DATA=TEMP;BY Primary_Outcome2 ;RUN;
+
+PROC TRANSPOSE DATA=TEMP OUT=A1;
+BY Primary_Outcome2;
+ID TFA;
+VAR FREQ;
+RUN;
+
+data A2;
+set Adjrd;
+TRA=COMPRESS(PUT(ROUND(MeanEstimate,0.0001),percentn12.2)||"("||PUT(ROUND(MeanLowerCL,0.0001),percentn12.2)||","||PUT(ROUND(MeanUpperCL,0.0001),percentn12.2)||")");
+Primary_Outcome2=2;
+keep Primary_Outcome2 TRA;
+run;
+
+data A3;
+set Adj_noninf;
+TRA=COMPRESS(PUT(ROUND(P_noninf,0.0001),12.4));
+Primary_Outcome2=3;
+keep Primary_Outcome2 TRA;
+run;
+
+data A4;
+set Adjrd;
+TRA=COMPRESS(PUT(ROUND(ChiSq,0.0001),12.4));
+Primary_Outcome2=2.1;
+keep Primary_Outcome2 TRA;
+run;
+
+data A5;
+set Adjrd;
+TRA=COMPRESS(PUT(ROUND(ProbChiSq,0.0001),12.4));
+Primary_Outcome2=2.2;
+keep Primary_Outcome2 TRA;
+run;
+
+DATA TABLE_FAS;
+SET A1 A4 A5 A2 A3;
+format Primary_Outcome2 Primary_Outcome.;
+DROP _NAME_;
+RUN;
+
+proc print data=TABLE_FAS;
+RUN;
+
+PROC DELETE DATA=A1-A5 SUMMARY CROSS1 CROSS2 TEMP  Adjrd Adj_noninf;RUN;
+
+
+
+
+
+
+/*PPS-策略*/
+  PROC IMPORT DATAFILE="J:\神经内科\刘锐\RACE\重新分析\20260828新数据\FAS_Center_2.XLSX"
+OUT=DATA
+DBMS=XLSX REPLACE;
+RUN;
+
+
+DATA DATA1;
+SET DATA(where=(VAR397="纳入PPS"));
+IF VAR5='对照组' THEN TRA= 0;
+IF VAR5='试验组' THEN TRA= 1;
+
+IF VAR5='对照组' THEN TFA= 1;
+IF VAR5='试验组' THEN TFA= 0;
+/*按无效填补*/
+  IF Primary_Outcome="1" THEN Primary_Outcome1=1;
+IF Primary_Outcome="0" THEN Primary_Outcome1=0;
+IF Primary_Outcome=" " THEN Primary_Outcome1=1;
+/*不填补*/
+  IF Primary_Outcome="1" THEN Primary_Outcome2=1;
+IF Primary_Outcome="0" THEN Primary_Outcome2=0;
+
+/*if volume>0 and volume<=10 then center_volume=1;*/
+  /*else if volume>10 and volume<=50 then center_volume=2;*/
+  /*else if volume>50 and volume<=100 then center_volume=3;*/
+  /*else if volume>100 then center_volume=4;*/
+  
+  if volume=50 then center_volume=1;
+else if volume=100 then center_volume=2;
+else if volume=150 then center_volume=2;
+else if volume=200 then center_volume=3;
+else if volume=300 then center_volume=4;
+else if volume=400 then center_volume=4;
+
+RUN;
+
+
+
+proc format;
+value TRA
+0 = "TFA"
+1 = "TRA";
+value TFA
+0 = "TRA"
+1 = "TFA";
+value Primary_Outcome
+0 = "否,n(%)"
+1 = "是,n(%)"
+2 = "率差及其97.8% CI"
+2.1 = "TAR χ2值 in glm"
+2.2 = "TAR P值 in glm"
+3 = "P值"
+-99="N(Missing)";
+/* value SEX*/
+  /*   0 = "女"*/
+  /*   1 = "男";*/
+  /* value XZ*/
+  /*   0 = "否"*/
+  /*   1 = "是";*/
+  /* value BBC*/
+  /*   0 = "左侧"*/
+  /*   1 = "右侧";*/
+  run;
+
+PROC MEANS DATA=DATA1 N NMISS;
+CLASS TFA;
+VAR Primary_Outcome2;
+format TFA TFA.;
+ods output Summary=Summary;
+RUN;
+
+proc freq data = DATA1;
+tables TFA*Primary_Outcome2 /nopercent nocol chisq ;
+format TFA TFA.;
+ods output CrossTabFreqs=CrossTabFreqs;
+run ;
+
+/*置信区间-加上中心volume 如果求单因素的见 主要疗效指标分析*/
+  proc genmod data=DATA1 descending;
+class TRA(ref='0')
+center_volume(ref='1') / param=ref;
+
+model Primary_Outcome2 = TRA center_volume
+/ dist=binomial link=identity;
+
+/* 双侧97.8% Wald置信区间 */
+  estimate "Adjusted RD: Trial-Control" TRA 1
+/ alpha=0.022;
+
+ods output Estimates=AdjRD;
+run;
+
+
+data Adj_Noninf;
+set AdjRD;
+length NI_Conclusion $40;
+Margin=0.02;
+/*
+  GENMOD的Estimates表通常使用以下变量名。
+建议通过PROC CONTENTS确认。
+*/
+  RD_event=MeanEstimate;
+SE=StdErr;
+/* 双侧97.8% Wald CI */
+  LowerCL=MeanLowerCL;
+UpperCL=MeanUpperCL;
+/*
+  Primary_Outcome2=1表示不良复合终点；
+RD=试验组事件率－对照组事件率。
+
+H0：RD_event >= 0.02
+H1：RD_event <  0.02
+*/
+  Z_noninf=(RD_event-Margin)/SE;
+P_noninf=probnorm(Z_noninf);
+
+/*
+  双侧97.8%CI对应单侧alpha=0.011。
+以下两种判定完全一致：
+
+1. P_noninf < 0.011
+2. 双侧97.8%CI上限 < 0.02
+*/
+  if P_noninf<0.011 then
+NI_Conclusion="达到非劣效";
+else
+  NI_Conclusion="未达到非劣效";
+
+/* 普通双侧检验：H0为RD=0 */
+  Z_equal=RD_event/SE;
+P_twosided=2*(1-probnorm(abs(Z_equal)));
+
+format RD_event LowerCL UpperCL Margin percentn12.2
+SE 12.6
+Z_noninf P_noninf
+Z_equal P_twosided 12.4;
+run;
+
+proc print data=Adj_Noninf(keep=Z_noninf P_noninf);
+run;
+
+DATA CROSS1;
+SET CrossTabFreqs(WHERE=(_TYPE_="11"));
+FREQ=COMPRESS(Frequency||"("||PUT(ROUND(RowPercent,0.001),12.2)||")");
+KEEP TFA Primary_Outcome2 FREQ;
+RUN;
+
+DATA CROSS2;
+SET SUMMARY;
+FREQ=COMPRESS(Primary_Outcome2_N||"("||Primary_Outcome2_NMiss||")");
+Primary_Outcome2=-99;
+KEEP TFA FREQ Primary_Outcome2;
+RUN;
+
+DATA TEMP;
+SET CROSS1 CROSS2;
+RUN;
+
+PROC SORT DATA=TEMP;BY Primary_Outcome2 ;RUN;
+
+PROC TRANSPOSE DATA=TEMP OUT=A1;
+BY Primary_Outcome2;
+ID TFA;
+VAR FREQ;
+RUN;
+
+data A2;
+set Adjrd;
+TRA=COMPRESS(PUT(ROUND(MeanEstimate,0.0001),percentn12.2)||"("||PUT(ROUND(MeanLowerCL,0.0001),percentn12.2)||","||PUT(ROUND(MeanUpperCL,0.0001),percentn12.2)||")");
+Primary_Outcome2=2;
+keep Primary_Outcome2 TRA;
+run;
+
+data A3;
+set Adj_noninf;
+TRA=COMPRESS(PUT(ROUND(P_noninf,0.0001),12.4));
+Primary_Outcome2=3;
+keep Primary_Outcome2 TRA;
+run;
+
+data A4;
+set Adjrd;
+TRA=COMPRESS(PUT(ROUND(ChiSq,0.0001),12.4));
+Primary_Outcome2=2.1;
+keep Primary_Outcome2 TRA;
+run;
+
+data A5;
+set Adjrd;
+TRA=COMPRESS(PUT(ROUND(ProbChiSq,0.0001),12.4));
+Primary_Outcome2=2.2;
+keep Primary_Outcome2 TRA;
+run;
+
+DATA TABLE_PPS;
+SET A1 A4 A5 A2 A3;
+format Primary_Outcome2 Primary_Outcome.;
+DROP _NAME_;
+RUN;
+
+proc print data=TABLE_PPS;
+RUN;
+
+PROC DELETE DATA=A1-A5 SUMMARY CROSS1 CROSS2 TEMP  Adjrd Adj_noninf;RUN;
+
+
+
+
+
+/*as_treat*/
+  PROC IMPORT DATAFILE="J:\神经内科\刘锐\RACE\重新分析\20260828新数据\FAS_Center_2.XLSX"
+OUT=DATA
+DBMS=XLSX REPLACE;
+RUN;
+
+DATA DATA1;
+SET DATA;
+SET DATA(WHERE=(PunctureSite^="肱"));
+AS_TREAT=VAR5;
+IF Cross_over^="Without_cross_over" THEN DO;
+IF VAR5='对照组' THEN AS_TREAT= '试验组';
+IF VAR5='试验组' THEN AS_TREAT= '对照组';
+END;
+IF Switching_type^="No_switch" THEN DO;
+IF VAR5='对照组' THEN AS_TREAT= '试验组';
+IF VAR5='试验组' THEN AS_TREAT= '对照组';
+END;
+
+IF AS_TREAT='对照组' THEN TRA= 0;
+IF AS_TREAT='试验组' THEN TRA= 1;
+
+IF AS_TREAT='对照组' THEN TFA= 1;
+IF AS_TREAT='试验组' THEN TFA= 0;
+/*Primary_Outcome2=Primary_Outcome;*/
+  /*不填补*/
+  IF Primary_Outcome="1" THEN Primary_Outcome2=1;
+IF Primary_Outcome="0" THEN Primary_Outcome2=0;
+
+/*if volume>0 and volume<=10 then center_volume=1;*/
+  /*else if volume>10 and volume<=50 then center_volume=2;*/
+  /*else if volume>50 and volume<=100 then center_volume=3;*/
+  /*else if volume>100 then center_volume=4;*/
+  
+  if volume=50 then center_volume=1;
+else if volume=100 then center_volume=2;
+else if volume=150 then center_volume=2;
+else if volume=200 then center_volume=3;
+else if volume=300 then center_volume=4;
+else if volume=400 then center_volume=4;
+
+RUN;
+
+
+PROC MEANS DATA=DATA1 N NMISS;
+CLASS TFA;
+VAR Primary_Outcome2;
+format TFA TFA.;
+ods output Summary=Summary;
+RUN;
+
+proc freq data = DATA1;
+tables TFA*Primary_Outcome2 /nopercent nocol chisq ;
+format TFA TFA.;
+ods output CrossTabFreqs=CrossTabFreqs;
+run ;
+
+/*置信区间-加上中心volume 如果求单因素的见 主要疗效指标分析*/
+  proc genmod data=DATA1 descending;
+class TRA(ref='0')
+center_volume(ref='1') / param=ref;
+
+model Primary_Outcome2 = TRA center_volume
+/ dist=binomial link=identity;
+
+/* 双侧97.8% Wald置信区间 */
+  estimate "Adjusted RD: Trial-Control" TRA 1
+/ alpha=0.022;
+
+ods output Estimates=AdjRD;
+run;
+
+
+data Adj_Noninf;
+set AdjRD;
+length NI_Conclusion $40;
+Margin=0.02;
+/*
+  GENMOD的Estimates表通常使用以下变量名。
+建议通过PROC CONTENTS确认。
+*/
+  RD_event=MeanEstimate;
+SE=StdErr;
+/* 双侧97.8% Wald CI */
+  LowerCL=MeanLowerCL;
+UpperCL=MeanUpperCL;
+/*
+  Primary_Outcome2=1表示不良复合终点；
+RD=试验组事件率－对照组事件率。
+
+H0：RD_event >= 0.02
+H1：RD_event <  0.02
+*/
+  Z_noninf=(RD_event-Margin)/SE;
+P_noninf=probnorm(Z_noninf);
+
+/*
+  双侧97.8%CI对应单侧alpha=0.011。
+以下两种判定完全一致：
+
+1. P_noninf < 0.011
+2. 双侧97.8%CI上限 < 0.02
+*/
+  if P_noninf<0.011 then
+NI_Conclusion="达到非劣效";
+else
+  NI_Conclusion="未达到非劣效";
+
+/* 普通双侧检验：H0为RD=0 */
+  Z_equal=RD_event/SE;
+P_twosided=2*(1-probnorm(abs(Z_equal)));
+
+format RD_event LowerCL UpperCL Margin percentn12.2
+SE 12.6
+Z_noninf P_noninf
+Z_equal P_twosided 12.4;
+run;
+proc print data=Adj_Noninf;
+run;
+
+DATA CROSS1;
+SET CrossTabFreqs(WHERE=(_TYPE_="11"));
+FREQ=COMPRESS(Frequency||"("||PUT(ROUND(RowPercent,0.001),12.2)||")");
+KEEP TFA Primary_Outcome2 FREQ;
+RUN;
+
+DATA CROSS2;
+SET SUMMARY;
+FREQ=COMPRESS(Primary_Outcome2_N||"("||Primary_Outcome2_NMiss||")");
+Primary_Outcome2=-99;
+KEEP TFA FREQ Primary_Outcome2;
+RUN;
+
+DATA TEMP;
+SET CROSS1 CROSS2;
+RUN;
+
+PROC SORT DATA=TEMP;BY Primary_Outcome2 ;RUN;
+
+PROC TRANSPOSE DATA=TEMP OUT=A1;
+BY Primary_Outcome2;
+ID TFA;
+VAR FREQ;
+RUN;
+
+data A2;
+set Adjrd;
+TRA=COMPRESS(PUT(ROUND(MeanEstimate,0.0001),percentn12.2)||"("||PUT(ROUND(MeanLowerCL,0.0001),percentn12.2)||","||PUT(ROUND(MeanUpperCL,0.0001),percentn12.2)||")");
+Primary_Outcome2=2;
+keep Primary_Outcome2 TRA;
+run;
+
+data A3;
+set Adj_noninf;
+TRA=COMPRESS(PUT(ROUND(P_noninf,0.0001),12.4));
+Primary_Outcome2=3;
+keep Primary_Outcome2 TRA;
+run;
+
+data A4;
+set Adjrd;
+TRA=COMPRESS(PUT(ROUND(ChiSq,0.0001),12.4));
+Primary_Outcome2=2.1;
+keep Primary_Outcome2 TRA;
+run;
+
+data A5;
+set Adjrd;
+TRA=COMPRESS(PUT(ROUND(ProbChiSq,0.0001),12.4));
+Primary_Outcome2=2.2;
+keep Primary_Outcome2 TRA;
+run;
+
+DATA TABLE_AS_treat;
+SET A1 A4 A5 A2 A3;
+format Primary_Outcome2 Primary_Outcome.;
+DROP _NAME_;
+RUN;
+
+proc print data=TABLE_AS_treat;
+RUN;
+PROC DELETE DATA=A1-A3 SUMMARY Crosstabfreqs CROSS1 CROSS2 TEMP ;RUN;
+
+
+
+
+
+/*PPS-严格*/
+  PROC IMPORT DATAFILE="J:\神经内科\刘锐\RACE\重新分析\20260828新数据\PPS_Center_2.XLSX"
+OUT=DATA
+DBMS=XLSX REPLACE;
+RUN;
+
+DATA DATA1;
+SET DATA(where=(Switching_type="No_switch"));
+
+IF VAR5='对照组' THEN TRA= 0;
+IF VAR5='试验组' THEN TRA= 1;
+
+IF VAR5='对照组' THEN TFA= 1;
+IF VAR5='试验组' THEN TFA= 0;
+/*Primary_Outcome2=Primary_Outcome;*/
+  /*不填补*/
+  IF Primary_Outcome="1" THEN Primary_Outcome2=1;
+IF Primary_Outcome="0" THEN Primary_Outcome2=0;
+
+if volume=50 then center_volume=1;
+else if volume=100 then center_volume=2;
+else if volume=150 then center_volume=2;
+else if volume=200 then center_volume=3;
+else if volume=300 then center_volume=4;
+else if volume=400 then center_volume=4;
+
+RUN;
+
+
+PROC MEANS DATA=DATA1 N NMISS;
+CLASS TFA;
+VAR Primary_Outcome2;
+format TFA TFA.;
+ods output Summary=Summary;
+RUN;
+
+proc freq data = DATA1;
+tables TFA*Primary_Outcome2 /nopercent nocol chisq ;
+format TFA TFA.;
+ods output CrossTabFreqs=CrossTabFreqs;
+run ;
+
+/*置信区间-加上中心volume 如果求单因素的见 主要疗效指标分析*/
+  proc genmod data=DATA1 descending;
+class TRA(ref='0')
+center_volume(ref='1') / param=ref;
+
+model Primary_Outcome2 = TRA center_volume
+/ dist=binomial link=identity;
+
+/* 双侧97.8% Wald置信区间 */
+  estimate "Adjusted RD: Trial-Control" TRA 1
+/ alpha=0.022;
+
+ods output Estimates=AdjRD;
+run;
+
+
+data Adj_Noninf;
+set AdjRD;
+length NI_Conclusion $40;
+Margin=0.02;
+/*
+  GENMOD的Estimates表通常使用以下变量名。
+建议通过PROC CONTENTS确认。
+*/
+  RD_event=MeanEstimate;
+SE=StdErr;
+/* 双侧97.8% Wald CI */
+  LowerCL=MeanLowerCL;
+UpperCL=MeanUpperCL;
+/*
+  Primary_Outcome2=1表示不良复合终点；
+RD=试验组事件率－对照组事件率。
+
+H0：RD_event >= 0.02
+H1：RD_event <  0.02
+*/
+  Z_noninf=(RD_event-Margin)/SE;
+P_noninf=probnorm(Z_noninf);
+
+/*
+  双侧97.8%CI对应单侧alpha=0.011。
+以下两种判定完全一致：
+
+1. P_noninf < 0.011
+2. 双侧97.8%CI上限 < 0.02
+*/
+  if P_noninf<0.011 then
+NI_Conclusion="达到非劣效";
+else
+  NI_Conclusion="未达到非劣效";
+
+/* 普通双侧检验：H0为RD=0 */
+  Z_equal=RD_event/SE;
+P_twosided=2*(1-probnorm(abs(Z_equal)));
+
+format RD_event LowerCL UpperCL Margin percentn12.2
+SE 12.6
+Z_noninf P_noninf
+Z_equal P_twosided 12.4;
+run;
+
+proc print data=Adj_Noninf;
+run;
+
+DATA CROSS1;
+SET CrossTabFreqs(WHERE=(_TYPE_="11"));
+FREQ=COMPRESS(Frequency||"("||PUT(ROUND(RowPercent,0.001),12.2)||")");
+KEEP TFA Primary_Outcome2 FREQ;
+RUN;
+
+DATA CROSS2;
+SET SUMMARY;
+FREQ=COMPRESS(Primary_Outcome2_N||"("||Primary_Outcome2_NMiss||")");
+Primary_Outcome2=-99;
+KEEP TFA FREQ Primary_Outcome2;
+RUN;
+
+DATA TEMP;
+SET CROSS1 CROSS2;
+RUN;
+
+PROC SORT DATA=TEMP;BY Primary_Outcome2 ;RUN;
+
+PROC TRANSPOSE DATA=TEMP OUT=A1;
+BY Primary_Outcome2;
+ID TFA;
+VAR FREQ;
+RUN;
+
+data A2;
+set Adjrd;
+TRA=COMPRESS(PUT(ROUND(MeanEstimate,0.0001),percentn12.2)||"("||PUT(ROUND(MeanLowerCL,0.0001),percentn12.2)||","||PUT(ROUND(MeanUpperCL,0.0001),percentn12.2)||")");
+Primary_Outcome2=2;
+keep Primary_Outcome2 TRA;
+run;
+
+data A3;
+set Adj_noninf;
+TRA=COMPRESS(PUT(ROUND(P_noninf,0.0001),12.4));
+Primary_Outcome2=3;
+keep Primary_Outcome2 TRA;
+run;
+
+data A4;
+set Adjrd;
+TRA=COMPRESS(PUT(ROUND(ChiSq,0.0001),12.4));
+Primary_Outcome2=2.1;
+keep Primary_Outcome2 TRA;
+run;
+
+data A5;
+set Adjrd;
+TRA=COMPRESS(PUT(ROUND(ProbChiSq,0.0001),12.4));
+Primary_Outcome2=2.2;
+keep Primary_Outcome2 TRA;
+run;
+
+DATA TABLE_Strict;
+SET A1 A4 A5 A2 A3;
+format Primary_Outcome2 Primary_Outcome.;
+DROP _NAME_;
+RUN;
+
+proc print data=TABLE_Strict;
+RUN;
+
+PROC DELETE DATA=A1-A3 SUMMARY Crosstabfreqs CROSS1 CROSS2 TEMP ;RUN;
+
+
+
+
+
+
+
+
+
+PROC IMPORT DATAFILE="J:\神经内科\刘锐\RACE\重新分析\20260828新数据\FAS_Center_2.XLSX"
+OUT=DATA
+DBMS=XLSX REPLACE;
+RUN;
+
+/*=========================================================
+  1. 构建CACE分析数据
+
+Z：随机分组
+0=对照组，1=试验组
+
+D：实际接受目标治疗
+0=未尝试经桡，1=尝试经桡
+
+Y：结局
+0=未发生复合终点，1=发生复合终点
+=========================================================*/
+  DATA DATA1;
+SET DATA(WHERE=(PunctureSite^="肱"));
+
+IF VAR5='对照组' THEN Z= 0;
+IF VAR5='试验组' THEN Z= 1;
+
+AS_TREAT=VAR5;
+IF Cross_over^="Without_cross_over" THEN DO;
+IF VAR5='对照组' THEN AS_TREAT= '试验组';
+IF VAR5='试验组' THEN AS_TREAT= '对照组';
+END;
+IF Switching_type^="No_switch" THEN DO;
+IF VAR5='对照组' THEN AS_TREAT= '试验组';
+IF VAR5='试验组' THEN AS_TREAT= '对照组';
+END;
+
+IF AS_TREAT='对照组' THEN D= 0;
+IF AS_TREAT='试验组' THEN D= 1;
+
+/*Primary_Outcome2=Primary_Outcome;*/
+  /*不填补*/
+  IF Primary_Outcome="1" THEN Y=1;
+IF Primary_Outcome="0" THEN Y=0;
+
+if volume=50 then center_volume=1;
+else if volume=100 then center_volume=2;
+else if volume=150 then center_volume=2;
+else if volume=200 then center_volume=3;
+else if volume=300 then center_volume=4;
+else if volume=400 then center_volume=4;
+
+if not missing(center_volume) then do;
+center_2 = (center_volume=2);
+center_3 = (center_volume=3);
+center_4 = (center_volume=4);
+end;
+else call missing(center_2, center_3, center_4);
+
+RUN;
+
+
+proc freq data=data1;
+tables Z*D Z*Y / nocol nopercent;
+run;
+
+proc means data=data1 n mean std min max;
+var center_volume;
+run;
+
+
+/*=========================================================
+  2. 第一阶段模型
+
+Z的系数表示调整site_volume后的依从性差异：
+E(D|Z=1)-E(D|Z=0)
+=========================================================*/
+  proc reg data=data1
+outest=first_stage_est
+noprint;
+model D = Z center_2 center_3 center_4;
+quit;
+
+data first_stage;
+set first_stage_est;
+if _TYPE_="PARMS";
+/* PROC REG输出中，变量Z保存Z的回归系数 */
+  Compliance_RD=Z;
+keep Compliance_RD;
+run;
+
+
+/*=========================================================
+  3. 简化式结局模型
+
+Z的系数表示调整site_volume后的ITT事件率差：
+E(Y|Z=1)-E(Y|Z=0)
+=========================================================*/
+  proc reg data=data1
+outest=reduced_form_est
+noprint;
+model Y = Z center_2 center_3 center_4;
+quit;
+
+data reduced_form;
+set reduced_form_est;
+if _TYPE_="PARMS";
+ITT_RD=Z;
+keep ITT_RD;
+run;
+
+
+/*=========================================================
+  4. CACE点估计
+
+CACE = 调整后ITT率差 / 调整后依从性差异
+=========================================================*/
+  data cace_point;
+merge first_stage reduced_form;
+if Compliance_RD>0 then
+CACE_RD=ITT_RD/Compliance_RD;
+else
+  CACE_RD=.;
+
+format ITT_RD Compliance_RD CACE_RD percentn12.2;
+run;
+
+proc print data=cace_point noobs label;
+label
+ITT_RD="调整后ITT事件率差"
+Compliance_RD="调整后依从性差异"
+CACE_RD="调整后CACE风险差";
+run;
+
+
+/*=========================================================
+  5. 按随机组分层进行受试者水平bootstrap
+=========================================================*/
+  proc sort data=data1;
+by Z;
+run;
+
+proc surveyselect data=data1
+out=boot_sample
+method=urs
+samprate=1
+reps=5000
+seed=20260711
+outhits
+noprint;
+strata Z;
+run;
+
+proc sort data=boot_sample;
+by Replicate;
+run;
+
+
+/*=========================================================
+  6. 每次bootstrap拟合第一阶段模型
+=========================================================*/
+  proc reg data=boot_sample
+outest=boot_first_est
+noprint;
+by Replicate;
+model D = Z center_2 center_3 center_4;
+quit;
+
+data boot_first;
+set boot_first_est;
+if _TYPE_="PARMS";
+Compliance_RD=Z;
+keep Replicate Compliance_RD;
+run;
+
+
+/*=========================================================
+  7. 每次bootstrap拟合简化式结局模型
+=========================================================*/
+  proc reg data=boot_sample
+outest=boot_reduced_est
+noprint;
+by Replicate;
+model Y = Z center_2 center_3 center_4;
+quit;
+
+data boot_reduced;
+set boot_reduced_est;
+if _TYPE_="PARMS";
+ITT_RD=Z;
+keep Replicate ITT_RD;
+run;
+
+
+/*=========================================================
+  8. 合并每次bootstrap结果并计算CACE
+=========================================================*/
+  proc sort data=boot_first;
+by Replicate;
+run;
+
+proc sort data=boot_reduced;
+by Replicate;
+run;
+
+data boot_est_all;
+merge boot_first boot_reduced;
+by Replicate;
+if Compliance_RD>0 then do;
+CACE_RD=ITT_RD/Compliance_RD;
+Valid_CACE=1;
+end;
+else do;
+CACE_RD=.;
+Valid_CACE=0;
+end;
+run;
+
+/* 检查bootstrap结果和第一阶段稳定性 */
+  proc freq data=boot_est_all;
+tables Valid_CACE / missing;
+run;
+
+proc means data=boot_est_all
+n mean std min p1 p5 p50 p95 p99 max;
+var Compliance_RD ITT_RD CACE_RD;
+run;
+
+data boot_est;
+set boot_est_all;
+if Valid_CACE=1;
+run;
+
+
+
+/*=========================================================
+  9. Bootstrap标准误
+=========================================================*/
+  proc means data=boot_est noprint;
+var Compliance_RD ITT_RD CACE_RD;
+output out=boot_se
+n(CACE_RD)=N_Boot_Valid
+std(Compliance_RD)=Compliance_SE
+std(ITT_RD)=ITT_SE
+std(CACE_RD)=CACE_SE;
+run;
+
+
+/*=========================================================
+  10. Bootstrap百分位数97.8%CI
+=========================================================*/
+  proc univariate data=boot_est noprint;
+var Compliance_RD ITT_RD CACE_RD;
+output out=boot_ci
+pctlpts=1.1 98.9
+pctlpre=Compliance_ ITT_ CACE_
+pctlname=LCL UCL;
+run;
+
+
+/*=========================================================
+  11. CACE非劣效性检验
+
+H0：CACE_RD >= 0.02
+H1：CACE_RD <  0.02
+=========================================================*/
+  data cace_final;
+merge cace_point boot_se boot_ci;
+length NI_Conclusion $40;
+Margin=0.02;
+Alpha_OneSided=0.011;
+/*
+  使用bootstrap重复CACE估计值的标准差作为SE，
+实施Wald型单侧非劣效检验。
+*/
+  if CACE_SE>0 then do;
+Z_NI=(CACE_RD-Margin)/CACE_SE;
+P_NI=probnorm(Z_NI);
+end;
+else do;
+Z_NI=.;
+P_NI=.;
+end;
+if missing(P_NI) then
+NI_Conclusion="无法评价";
+else if P_NI<Alpha_OneSided then
+NI_Conclusion="达到非劣效";
+else
+  NI_Conclusion="未达到非劣效";
+format ITT_RD ITT_LCL ITT_UCL
+Compliance_RD Compliance_LCL Compliance_UCL
+CACE_RD CACE_LCL CACE_UCL
+Margin percentn12.2
+Compliance_SE ITT_SE CACE_SE 12.6
+Z_NI P_NI 12.4;
+run;
+
+proc print data=cace_final noobs label;
+var ITT_RD ITT_LCL ITT_UCL
+Compliance_RD Compliance_LCL Compliance_UCL
+CACE_RD CACE_LCL CACE_UCL
+CACE_SE Margin Z_NI P_NI
+N_Boot_Valid NI_Conclusion;
+
+label
+ITT_RD="调整后ITT事件率差"
+ITT_LCL="ITT 97.8CI下限"
+ITT_UCL="ITT 97.8CI上限"
+Compliance_RD="调整后依从性差异"
+Compliance_LCL="依从性差异97.8CI下限"
+Compliance_UCL="依从性差异97.8CI上限"
+CACE_RD="调整后CACE风险差"
+CACE_LCL="CACE 97.8CI下限"
+CACE_UCL="CACE 97.8CI上限"
+CACE_SE="CACE Bootstrap标准误"
+Margin="非劣界值"
+Z_NI="非劣效Wald Z值"
+P_NI="非劣效单侧P值"
+N_Boot_Valid="有效Bootstrap次数"
+NI_Conclusion="非劣效结论";
+run;
+
+
+
+#
+Primary_KM <- survfit(Surv(time, Primary_Outcome) ~ 组别, data = FAS)
+fit.cox <- coxph(Surv(time, Primary_Outcome) ~ 组别, data = FAS)
+test.ph <- cox.zph(fit.cox)
+print(test.ph)
+cox_result_out(fit = fit.cox)
+km_Primary <-
+  km_plot(
+    Primary_KM,
+    FAS,
+    title = 'A',
+    fun = 'event',
+    p_x = 35-12,
+    p_y = 0.005,
+    p_x_add = 1.8,
+    censor.size = 1 / 1.5,
+    surv.plot.height = 0.15,
+    size = 0.5,
+    palette = c("#BC3C29FF", "#0072B5FF"),
+    tables.height = 0.2,
+    fontsize = 2,
+    text_size = 8,
+    line_size = 0.1,
+    p_size = 3,
+    legend = "none",
+    ylim = c(0, 0.04),
+    xlim = c(0,30),
+    break.x.by = 6,
+    risk.table = FALSE,
+    ylab = "Cumulative incidence",
+    xlab = "Time since randomisation (days)",
+    legend.labs = c('Transfemoral approach', 'Transradial approach'))
+
+
+
+km_Primary$plot <- km_Primary$plot + 
+  geom_segment(aes(x = 0, y = 0.0398, xend = 3.5, yend = 0.0398), 
+               color = "#BC3C29FF", linetype = "solid", linewidth = 0.5)+
+  geom_segment(aes(x = 0, y = 0.0348, xend = 3.5, yend = 0.0348), 
+               color = "#0072B5FF", linetype = "solid", linewidth = 0.5)+
+  geom_text(aes(x = 9.5, y = 0.04, label = "Transfemoral approach"), 
+            color = "black", size = 3) +
+  geom_text(aes(x = 9.1, y = 0.035, label = "Transradial approach"), 
+            color = "black", size = 3)+
+  annotate("text", x= 27.5-9.75-0.6, y = 0.005, size= 3,
+           label = "HR 0.83 (95% CI 0.40-1.73)")
+
+time_points <- seq(0, 30, by = 6)
+# 1. Number at risk
+risk <- summary(
+  Primary_KM,
+  times = time_points,
+  extend = TRUE
+)
+
+risk_df <- data.frame(
+  time = risk$time,
+  strata = risk$strata,
+  n_risk = risk$n.risk
+)
+
+risk_df$strata <- sub("^组别=", "", risk_df$strata)
+
+censor_table <- expand.grid(
+  strata = unique(as.character(FAS$组别)),
+  time = time_points
+) %>%
+  rowwise() %>%
+  mutate(
+    n_censor = sum(
+      FAS$组别 == strata &
+        !is.na(FAS$time) &
+        !is.na(FAS$Primary_Outcome) &
+        FAS$Primary_Outcome == 0 &
+        FAS$time <= time,
+      na.rm = TRUE
+    )
+  ) %>%
+  ungroup()
+
+risk_table <- risk_df %>%
+  left_join(
+    censor_table,
+    by = c("strata", "time")
+  ) %>%
+  mutate(
+    label = paste0(n_risk, " (", n_censor, ")")
+  )
+
+risk_plot <- ggplot( risk_table, aes(x = time, y = strata, label = label) ) + 
+  geom_text( size = 3 ) + 
+  scale_x_continuous( limits = c(-2, 32), breaks = time_points, expand = c(0, 0) ) + 
+  scale_y_discrete( labels = c( "Transfemoral\napproach", "Number at risk\n(censored)\nTransradial\napproach" ) ) + 
+  labs( x = NULL, y = "" ) + 
+  theme_classic() + 
+  theme( axis.line = element_blank(), 
+         axis.ticks = element_blank(), 
+         axis.text.x = element_blank(), 
+         axis.title.x = element_blank(), 
+         axis.text.y = element_text( size = 8, colour = "black" ), 
+         axis.title.y = element_text( size = 8, colour = "black" ), 
+         plot.margin = margin(0, 5, 0, 5) )
+
+library(patchwork)
+
+final_KM <- km_Primary$plot / risk_plot +
+  plot_layout(heights = c(1, 0.22))
+saveRDS(final_KM, 'Manuscript/FAS_KM.rds')
+
+
+tiff('./Manuscript/KM.tiff', units = "in",width = 6, height = 5,
+     res = 300)
+final_KM
+dev.off()
+
+
+
+# Subgroup -----
+FAS_sub = FAS %>% 
+  rename(Sex = 性别,
+         Smoking = 吸烟史,
+         hypertension = 高血压病史,
+         diabetes = 糖尿病病史,
+         CHD = 冠状动脉粥样硬化性心脏病病史,
+         hyperlipidemia = 高脂血症病史) %>% 
+  mutate(preoperative_DSA = case_when(最近一次脑血管造影 == '是' ~ 1,
+                                      TRUE ~ 0),
+         Age_sub = case_when(年龄<=65 ~ 0,
+                             TRUE ~ 1)) %>% 
+  mutate(Sex = as.factor(Sex),
+         Smoking = as.factor(Smoking),
+         hypertension = as.factor(hypertension),
+         diabetes = as.factor(diabetes),
+         CHD = as.factor(CHD),
+         hyperlipidemia = as.factor(hyperlipidemia),
+         preoperative_DSA = as.factor(preoperative_DSA),
+         Age_sub = as.factor(Age_sub)) %>% 
+  mutate(Primary_Outcome = as.numeric(Primary_Outcome)-1) %>% 
+  filter(!is.na(Primary_Outcome))
+
+FAS_sub$hyperlipidemia <- factor(
+  FAS_sub$hyperlipidemia,
+  levels = c("无", "有")
+)
+
+FAS_sub$Smoking <- factor(
+  FAS_sub$Smoking,
+  levels = c("无", "有")
+)
+
+# Subgroup ----
+subgroup.vars <- c("Age_sub", "Sex", "Smoking", "hypertension", "diabetes", "CHD", "hyperlipidemia", "preoperative_DSA")
+
+output_of_glm_sub_2 = function(fit = NULL){
+  fit %>%
+    broom::tidy(exp = TRUE, conf.int = TRUE) %>%
+    mutate(OR = round(estimate, 2),
+           low = round(conf.low,2),
+           high = round(conf.high,2),
+           ci = paste0(low,'-',high),
+           ORvalue = paste0(OR, ' (', ci, ')'),
+           p.value = ifelse(
+             p.value < 0.0001,
+             " < 0.001",
+             signif(p.value, 2)
+           )) %>% 
+    filter(term != '(Intercept)') %>% 
+    dplyr::select(term, ORvalue, OR, low, high, p.value) 
+}
+
+do_analysis <- function (data) {
+  glm(Primary_Outcome ~ 组别, family = poisson(link = "log"), data = data) %>%
+    output_of_glm_sub_2()
+}
+
+do_interact = function(var){
+  fml = paste0('Primary_Outcome ~  组别 * ', var)
+  fit = glm(fml, family = poisson(link = "log"), data = FAS_sub)
+  interact = output_of_glm_sub_2(fit)[3,6]
+  return(interact)
+}
+
+do_patients = function(var){
+  group_var <- enquo(var)  
+  FAS_sub %>% 
+    group_by(!!group_var) %>% 
+    summarise(n = n())
+}
+
+do_patients_group <- function(var) {
+  group_var <- enquo(var)
+  
+  FAS_sub %>%
+    # 排除该变量为 NA 的行，避免生成多余的亚组行
+    filter(!is.na(!!group_var)) %>% 
+    # 同时按 亚组变量 和 治疗组 分组
+    group_by(!!group_var, 组别) %>% 
+    summarise(
+      n_event = sum(Primary_Outcome == 1, na.rm = TRUE), # 假设 outcome 是你的结局变量
+      N_total = n(),
+      .groups = "drop"
+    ) %>%
+    # 计算百分比并格式化字符串
+    mutate(
+      display_text = sprintf("%d/%d (%.1f%%)", n_event, N_total, (n_event / N_total) * 100)
+    )
+}
+
+res_final <- map_dfr(subgroup.vars, function(var_name) {
+  do_patients_group(!!sym(var_name)) %>%
+    rename(Level = 1) %>%
+    mutate(Variable = var_name, .before = 1) 
+})
+
+res_wide <- res_final %>%
+  pivot_wider(
+    names_from = 组别, 
+    values_from = c(n_event, N_total, display_text),
+    names_glue = "{组别}_{.value}"
+  ) %>%
+  select(Variable, Level, 试验组_display_text, 对照组_display_text)
+
+interact = tibble(interact = map(subgroup.vars, do_interact)) %>% unnest(interact)
+
+do_patients(Age_sub) %>% 
+  cbind(do_patients(Sex))%>% 
+  cbind(do_patients(Smoking)) %>% 
+  cbind(do_patients(hypertension)) %>% 
+  cbind(do_patients(diabetes)) %>% 
+  cbind(do_patients(CHD)) %>% 
+  cbind(do_patients(hyperlipidemia)) %>% 
+  cbind(do_patients(preoperative_DSA)) 
+
+
+SubResult = tibble(var = subgroup.vars) %>%
+  mutate(lvl = map(var, ~ levels(FAS_sub[[.x]]))) %>%
+  unnest(cols = lvl) %>%
+  mutate(data =
+           map2(var, lvl,
+                ~ FAS_sub[FAS_sub[[.x]] %in% .y, ])) %>%
+  mutate(est = map(data, do_analysis)) %>%
+  unnest(cols = est) %>%
+  mutate(p.for.interaction = rep('',16)) %>% 
+  select(-data) %>% 
+  select(-term) %>% 
+  rbind(tibble(var = c(subgroup.vars),
+               lvl = rep(NA,8),
+               ORvalue = rep(NA,8),
+               OR = rep('',8),
+               low = rep(NA,8),
+               high = rep(NA,8),
+               p.value = rep(NA,8),
+               p.for.interaction= c(interact$p.value))) %>% 
+  arrange(match(var, subgroup.vars), desc(p.for.interaction)) %>%
+  rbind(tibble(var = "Overall",
+               lvl = "NA",
+               ORvalue = "0.84 (0.40-1.74)",
+               OR = 0.84,
+               low = 0.40,
+               high = 1.74,
+               p.value = "",
+               p.for.interaction = "0.63"))
+
+table_each_group <- res_wide %>%
+  group_split(Variable) %>% 
+  map_dfr(function(sub_df) {
+    header <- tibble(
+      Variable = sub_df$Variable[1],
+      Level = sub_df$Variable[1], 
+      试验组_display_text = NA,
+      对照组_display_text = NA
+    )
+    # 将标题行和原始亚组行合并
+    bind_rows(header, sub_df %>% mutate(Level = paste0("  ", Level)))
+  })
+
+table_text = 
+  tibble(var = c('Age', '  ≤65', '  >65', 
+                 'Sex', '  Male', '  Female', 
+                 'Smoking', '  No', '  Yes',
+                 'Hypertension', '  No', '  Yes',
+                 'Diabetes mellitus', '  No', '  Yes',
+                 'Coronary heart disease', '  No', '  Yes',
+                 'Hyperlipidemia', '  No', '  Yes',
+                 'Preoperative angiography', '  No', '  Yes', "Overall"),
+         `No of patients` = c('', '310', '770', '','916', '164', 
+                              '','628', '452', '', '305', '775',
+                              '','729', '351', '', '920', '160',
+                              '','1004', '76', '', '713', '367',
+                              "1080"),
+         TRA = c(table_each_group$试验组_display_text, "13/532 (2.4%)"),
+         TFA = c(table_each_group$对照组_display_text, "16/548 (2.9%)"),
+         `RR (95% CI)` = c(SubResult$ORvalue), 
+         `P for interaction` = c(SubResult$p.for.interaction))
+
+tabel_text <- table_text %>%
+  mutate(across(everything(), ~ gsub("\\.", "·", .)))
+
+tabel_text = tabel_text %>% 
+  as.matrix()
+
+tabel_text = tabel_text[,-2]
+
+tiff("Manuscript/Subgroup.tiff", res = 300, units = "in",
+     width = 14, height = 8)
+library(forestplot)
+forestplot(
+  labeltext = tabel_text,
+  mean = as.numeric(SubResult$OR),
+  lower = as.numeric(SubResult$low),
+  upper =  as.numeric(SubResult$high),
+  zero=1,
+  boxsize=0.4,
+  graph.pos= 4,
+  graphwidth = unit(.25,"npc"),
+  xlab="Risk ratio (95% CI)",
+  is.summary=c(T,F,F,T,F,F,T,F,F,T,F,F,
+               T,F,F,T,F,F,T,F,F,T,F,F,T),#T=粗体
+  txt_gp = fpTxtGp(
+    label = gpar(cex = 1*0.3*2*1.5*0.9),
+    ticks = gpar(cex = 1.1*0.3*2*1.5*0.9),
+    xlab = gpar(cex = 1*0.3*2*1.5*0.9),
+    title = gpar(cex = 2*0.3*2*1.5*0.9)
+  ),
+  lwd.zero = 1.5*0.3*2*1.2*2,
+  lwd.ci = 1.5*0.3*2*1.2*2,
+  lwd.xaxis = 1.5*0.3*2*1.2*2,
+  lty.ci = 1,
+  ci.vertices = FALSE,
+  ci.vertices.height = 0.1,
+  clip=c(0,3),
+  lineheight=unit(6, 'mm'),
+  line.margin=unit(6, 'mm'),
+  colgap=unit(6, 'mm'),
+  col=fpColors(zero = "black",
+               box = 'black',
+               lines = 'black'),
+  xticks = c(0, 1,2,3),
+  fn.ci_norm = "fpDrawCircleCI"
+) %>%
+  fp_add_header(
+    var = c("", ""),
+    `TRA` = c(
+      "Transradial approach",
+      "n patients with event/N (%)"
+    ),
+    `TFA` = c(
+      "Transfemoral approach",
+      "n patients with event/N (%)"
+    ),
+    `RR (95% CI)` = c(
+      "RR (95% CI)",
+      ""
+    ),
+    `P for interaction` = c(
+      expression(bolditalic(P) ~ bold(" for interaction")),
+      ""
+    )
+  ) %>%
+  fp_add_lines(
+    h_2 = gpar(
+      lty = 1,
+      columns = c(2, 3)
+    ),
+    h_3 = gpar(
+      lty = 1
+    )
+  )
+dev.off()
